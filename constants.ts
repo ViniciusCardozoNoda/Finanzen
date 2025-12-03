@@ -1,0 +1,265 @@
+import { User, Transaction, Account, Bill, SharedSpace, FeedbackItem } from './types';
+
+export const MOCK_USERS: User[] = [
+  {
+    id: 1,
+    name: 'User Test',
+    email: 'user@finanzen.app',
+    password: 'password123',
+    avatar: 'https://i.pravatar.cc/150?u=user',
+    role: 'user',
+    subscriptionStatus: 'none',
+  },
+  {
+    id: 2,
+    name: 'Admin',
+    email: 'admin@finanzen.app',
+    password: 'password123',
+    avatar: 'https://i.pravatar.cc/150?u=admin',
+    role: 'admin',
+    subscriptionStatus: 'active',
+  }
+];
+
+export const MOCK_SHARED_SPACES: SharedSpace[] = [
+    {
+        id: 1,
+        name: 'Orçamento Familiar',
+        memberIds: [1, 2],
+    }
+];
+
+export const MOCK_ACCOUNTS: Account[] = [
+  {
+    id: 1,
+    userId: 1,
+    name: 'Conta Pessoal',
+    description: 'Gastos de casa',
+    balance: 12345.67,
+    sharedSpaceId: null,
+  },
+  {
+    id: 2,
+    userId: 1,
+    name: 'Conta Conjunta Família',
+    description: 'Conta para despesas familiares',
+    balance: 5000.00,
+    sharedSpaceId: 1,
+  }
+];
+
+export const MOCK_BILLS: Bill[] = [
+    {
+        id: 1,
+        userId: 1,
+        name: 'Assinatura de Internet Pessoal',
+        amount: 120.00,
+        dueDate: new Date('2025-07-15T00:00:00'),
+        isPaid: false,
+        isRecurring: true,
+        recurrence: 'monthly',
+        sharedSpaceId: null,
+    },
+    {
+        id: 2,
+        userId: 1,
+        name: 'Seguro do Carro (Anual)',
+        amount: 1500.00,
+        dueDate: new Date('2025-08-01T00:00:00'),
+        isPaid: false,
+        isRecurring: false,
+        sharedSpaceId: null,
+    },
+    {
+        id: 3,
+        userId: 1,
+        name: 'Conta de Luz Família',
+        amount: 250.00,
+        dueDate: new Date('2025-07-20T00:00:00'),
+        isPaid: false,
+        isRecurring: true,
+        recurrence: 'monthly',
+        sharedSpaceId: 1,
+    }
+];
+
+export const TRANSACTION_CATEGORIES = {
+  income: [
+    'Salário',
+    'Freelance',
+    'Investimentos',
+    'Presente',
+    'Bônus',
+    'Outros',
+  ],
+  expense: [
+    'Educação',
+    'Lazer',
+    'Saúde',
+    'Transporte',
+    'Casa',
+    'Alimentação',
+    'Compras',
+    'Serviços',
+    'Outros',
+  ],
+};
+
+export const PAYMENT_METHODS = [
+  'Cartão de Crédito',
+  'Cartão de Débito',
+  'PIX',
+  'Dinheiro',
+  'Boleto',
+];
+
+export const MOCK_TRANSACTIONS: Transaction[] = [
+  {
+    id: 1,
+    userId: 1,
+    accountId: 1,
+    description: 'Pós graduação Gabi (6/6)',
+    amount: 60.00,
+    type: 'expense',
+    category: 'Educação',
+    date: new Date('2025-03-02T00:00:00'),
+    paymentMethod: 'Cartão de Crédito',
+    expenseType: 'installment',
+    installments: { current: 6, total: 6 },
+    sharedSpaceId: null,
+  },
+  {
+    id: 2,
+    userId: 1,
+    accountId: 1,
+    description: 'Face doctor / tratamento estria Gabi (5/5)',
+    amount: 150.00,
+    type: 'expense',
+    category: 'Lazer',
+    date: new Date('2025-03-01T00:00:00'),
+    paymentMethod: 'Cartão de Crédito',
+    expenseType: 'installment',
+    installments: { current: 5, total: 5 },
+    sharedSpaceId: null,
+  },
+  {
+    id: 3,
+    userId: 1,
+    accountId: 1,
+    description: 'Pós graduação Gabi (5/6)',
+    amount: 60.00,
+    type: 'expense',
+    category: 'Educação',
+    date: new Date('2025-02-01T00:00:00'),
+    paymentMethod: 'Cartão de Crédito',
+    expenseType: 'installment',
+    installments: { current: 5, total: 6 },
+    sharedSpaceId: null,
+  },
+   {
+    id: 4,
+    userId: 1,
+    accountId: 1,
+    description: 'Pós graduação Gabi (4/6)',
+    amount: 60.00,
+    type: 'expense',
+    category: 'Educação',
+    date: new Date('2024-01-12T00:00:00'),
+    paymentMethod: 'Cartão de Crédito',
+    expenseType: 'installment',
+    installments: { current: 4, total: 6 },
+    sharedSpaceId: null,
+  },
+   {
+    id: 5,
+    userId: 1,
+    accountId: 1,
+    description: 'Face doctor / tratamento estria Gabi (4/5)',
+    amount: 150.00,
+    type: 'expense',
+    category: 'Lazer',
+    date: new Date('2024-01-12T00:00:00'),
+    paymentMethod: 'Cartão de Crédito',
+    expenseType: 'installment',
+    installments: { current: 4, total: 5 },
+    sharedSpaceId: null,
+  },
+  {
+    id: 6,
+    userId: 1,
+    accountId: 1,
+    description: 'Hospital Gabi (1/4)',
+    amount: 382.00,
+    type: 'expense',
+    category: 'Saúde',
+    date: new Date('2025-08-14T00:00:00'),
+    paymentMethod: 'Cartão de Crédito',
+    expenseType: 'installment',
+    installments: { current: 1, total: 4 },
+    sharedSpaceId: null,
+  },
+  {
+    id: 7,
+    userId: 1,
+    accountId: 1,
+    description: 'Aluguel + taxa condominio (house aumento)',
+    amount: 1298.60,
+    type: 'expense',
+    category: 'Casa',
+    date: new Date('2025-08-13T00:00:00'),
+    paymentMethod: 'Pix',
+    expenseType: 'fixed',
+    sharedSpaceId: null,
+  },
+   {
+    id: 8,
+    userId: 1,
+    accountId: 1,
+    description: 'Internet sim digital',
+    amount: 120.00,
+    type: 'expense',
+    category: 'Casa',
+    date: new Date('2025-08-13T00:00:00'),
+    paymentMethod: 'Pix',
+    expenseType: 'fixed',
+    sharedSpaceId: null,
+  },
+  {
+    id: 9,
+    userId: 1,
+    accountId: 1,
+    description: 'Uber',
+    amount: 9.59,
+    type: 'expense',
+    category: 'Transporte',
+    date: new Date('2025-08-14T00:00:00'),
+    paymentMethod: 'Cartão de Crédito',
+    expenseType: 'unique',
+    sharedSpaceId: null,
+  },
+  {
+    id: 10,
+    userId: 1,
+    accountId: 2,
+    description: 'Supermercado Família',
+    amount: 450.75,
+    type: 'expense',
+    category: 'Alimentação',
+    date: new Date('2025-08-10T00:00:00'),
+    paymentMethod: 'Cartão de Débito',
+    expenseType: 'unique',
+    sharedSpaceId: 1,
+  }
+];
+
+export const MOCK_FEEDBACK_ITEMS: FeedbackItem[] = [
+    {
+        id: 1,
+        userId: 1,
+        userName: 'User Test',
+        userEmail: 'user@finanzen.app',
+        message: 'O cálculo do resumo mensal no dashboard parece estar incorreto para o mês de Julho. A soma das despesas não bate.',
+        timestamp: new Date(),
+        status: 'new',
+    }
+];
