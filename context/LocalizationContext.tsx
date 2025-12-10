@@ -1,4 +1,6 @@
+
 import React, { createContext, useState, useContext, ReactNode, useCallback, useMemo, useEffect } from 'react';
+import { translations } from '../locales/translations';
 
 type Language = 'pt' | 'en' | 'es';
 
@@ -10,59 +12,26 @@ interface LocalizationContextType {
 
 const LocalizationContext = createContext<LocalizationContextType | undefined>(undefined);
 
-// Cache for loaded translations
-const translationsCache: { [key in Language]?: Record<string, string> } = {};
-
 export const LocalizationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguage] = useState<Language>('pt');
-  const [translations, setTranslations] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [currentTranslations, setCurrentTranslations] = useState<Record<string, string>>(translations['pt']);
 
   useEffect(() => {
-    const fetchTranslations = async (lang: Language) => {
-      if (translationsCache[lang]) {
-        setTranslations(translationsCache[lang]!);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        // Using a relative path from the root of the site where index.html is served
-        const response = await fetch(`locales/${lang}.json`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        translationsCache[lang] = data;
-        setTranslations(data);
-      } catch (error) {
-        console.error("Failed to fetch translations:", error);
-        setTranslations({}); // Fallback
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchTranslations(language);
+      // Synchronously set translations based on selected language
+      setCurrentTranslations(translations[language]);
   }, [language]);
 
   const t = useCallback((key: string, params?: { [key:string]: string | number }): string => {
-    let translation = translations[key] || key;
+    let translation = currentTranslations[key] || key;
     if (params) {
       Object.keys(params).forEach(paramKey => {
         translation = translation.replace(`{${paramKey}}`, String(params[paramKey]));
       });
     }
     return translation;
-  }, [translations]);
+  }, [currentTranslations]);
 
   const contextValue = useMemo(() => ({ language, setLanguage, t }), [language, t]);
-
-  // A simple loading state to prevent rendering the app with untranslated keys
-  if (isLoading && !Object.keys(translations).length) {
-    return <div>Loading language...</div>;
-  }
 
   return (
     <LocalizationContext.Provider value={contextValue}>
