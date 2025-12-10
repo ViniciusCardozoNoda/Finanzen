@@ -1,9 +1,9 @@
 
 import { MOCK_USERS, MOCK_ACCOUNTS, MOCK_TRANSACTIONS, MOCK_BILLS, MOCK_SHARED_SPACES, MOCK_FEEDBACK_ITEMS } from '../constants';
-import { User, Account, Transaction, Bill, SharedSpace, FeedbackItem, BroadcastMessage } from '../types';
+import { User, Account, Transaction, Bill, SharedSpace, FeedbackItem, BroadcastMessage, Goal } from '../types';
 
 const DB_NAME = 'FinanZenDB';
-const DB_VERSION = 8; // Increment version for schema changes
+const DB_VERSION = 9; 
 
 const STORES = {
   USERS: 'users',
@@ -14,10 +14,11 @@ const STORES = {
   SHARED_SPACES: 'sharedSpaces',
   FEEDBACK_ITEMS: 'feedbackItems',
   BROADCAST_MESSAGES: 'broadcastMessages',
+  GOALS: 'goals',
 };
 
 let db: IDBDatabase;
-let dbPromise: Promise<IDBDatabase> | null = null; // Handles concurrent init calls
+let dbPromise: Promise<IDBDatabase> | null = null; 
 
 // Helper to safely create a Date object from a string or another Date object
 const safeCreateDate = (dateValue: any): Date | undefined => {
@@ -33,8 +34,6 @@ const safeCreateDate = (dateValue: any): Date | undefined => {
 };
 
 const prepareForDb = (obj: any): any => {
-    // A robust way to deep-clone and convert Dates to ISO strings.
-    // JSON.stringify handles nested objects and arrays, and strips 'undefined' properties.
     return JSON.parse(JSON.stringify(obj));
 };
 
@@ -73,9 +72,7 @@ const initDB = (): Promise<IDBDatabase> => {
 
       console.log(`Upgrading database from version ${oldVersion} to ${DB_VERSION}`);
 
-      // Version-based migration ensures that upgrades are applied sequentially and correctly.
       if (oldVersion < 1) {
-        // Version 1: Initial schema with core features and mock data for new users.
         if (!db.objectStoreNames.contains(STORES.USERS)) {
             const usersStore = db.createObjectStore(STORES.USERS, { keyPath: 'id' });
             MOCK_USERS.forEach(user => usersStore.add(prepareForDb(user)));
@@ -105,13 +102,11 @@ const initDB = (): Promise<IDBDatabase> => {
       }
 
       if (oldVersion < 2) {
-        // Version 2: Add shared spaces feature.
         if (!db.objectStoreNames.contains(STORES.SHARED_SPACES)) {
             const sharedSpacesStore = db.createObjectStore(STORES.SHARED_SPACES, { keyPath: 'id' });
             MOCK_SHARED_SPACES.forEach(space => sharedSpacesStore.add(prepareForDb(space)));
         }
         
-        // Add indexes to existing stores to support shared spaces.
         const accountsStore = transaction.objectStore(STORES.ACCOUNTS);
         if (!accountsStore.indexNames.contains('by_sharedSpaceId')) {
             accountsStore.createIndex('by_sharedSpaceId', 'sharedSpaceId', { unique: false });
@@ -127,7 +122,6 @@ const initDB = (): Promise<IDBDatabase> => {
       }
 
       if (oldVersion < 3) {
-        // Version 3: Add feedback items for admin panel.
         if (!db.objectStoreNames.contains(STORES.FEEDBACK_ITEMS)) {
             const feedbackStore = db.createObjectStore(STORES.FEEDBACK_ITEMS, { keyPath: 'id' });
             feedbackStore.createIndex('by_status', 'status');
@@ -136,13 +130,16 @@ const initDB = (): Promise<IDBDatabase> => {
       }
 
       if (oldVersion < 4) {
-        // Version 4: Add broadcast messages feature.
         if (!db.objectStoreNames.contains(STORES.BROADCAST_MESSAGES)) {
             db.createObjectStore(STORES.BROADCAST_MESSAGES, { keyPath: 'id' });
         }
       }
-
-      // Subsequent versions (5, 6, 7, 8) can be added here if more schema changes are needed.
+      
+      if (oldVersion < 9) {
+          if (!db.objectStoreNames.contains(STORES.GOALS)) {
+              db.createObjectStore(STORES.GOALS, { keyPath: 'id' });
+          }
+      }
     };
   });
 
@@ -166,11 +163,7 @@ const performDbOperation = async <T>(storeName: string, mode: IDBTransactionMode
 const hydrateRecord = (record: any, storeName: string): any | null => {
     if (!record) return null;
     
-    // Deep clone the record to prevent any potential reference issues with read-only DB objects.
-    // This is a robust way to ensure we are always working with a clean, mutable copy.
     const hydrated = JSON.parse(JSON.stringify(record));
-
-    // Central validation logic
     const isInvalidNumber = (value: any) => typeof value !== 'number' || isNaN(value);
 
     switch (storeName) {
@@ -180,57 +173,34 @@ const hydrateRecord = (record: any, storeName: string): any | null => {
             break;
 
         case STORES.ACCOUNTS:
-            // Balance is required but can be sanitized to 0 if invalid.
             if (isInvalidNumber(hydrated.balance)) {
-                console.warn(`Sanitizing invalid 'balance' to 0 for Account record:`, record);
                 hydrated.balance = 0;
             }
             break;
 
         case STORES.TRANSACTIONS: {
             const date = safeCreateDate(hydrated.date);
-            if (!date) {
-                console.warn(`Skipping corrupted Transaction record due to invalid 'date'. Record:`, record);
-                return null;
-            }
-            // Amount is required. Discard record if invalid.
-            if (isInvalidNumber(hydrated.amount)) {
-                console.warn(`Skipping corrupted Transaction record due to invalid 'amount'. Record:`, record);
-                return null;
-            }
+            if (!date) return null;
+            if (isInvalidNumber(hydrated.amount)) return null;
             hydrated.date = date;
             break;
         }
 
         case STORES.BILLS: {
             const dueDate = safeCreateDate(hydrated.dueDate);
-            if (!dueDate) {
-                console.warn(`Skipping corrupted Bill record due to invalid 'dueDate'. Record:`, record);
-                return null;
-            }
-             // Amount is required. Discard record if invalid.
-            if (isInvalidNumber(hydrated.amount)) {
-                console.warn(`Skipping corrupted Bill record due to invalid 'amount'. Record:`, record);
-                return null;
-            }
+            if (!dueDate) return null;
+            if (isInvalidNumber(hydrated.amount)) return null;
             hydrated.dueDate = dueDate;
             break;
         }
 
         case STORES.FEEDBACK_ITEMS:
         case STORES.BROADCAST_MESSAGES: {
-             // Required date: if invalid, discard the entire record.
             const timestamp = safeCreateDate(hydrated.timestamp);
-            if (!timestamp) {
-                console.warn(`Skipping corrupted ${storeName} record due to invalid 'timestamp'. Record:`, record);
-                return null;
-            }
+            if (!timestamp) return null;
             hydrated.timestamp = timestamp;
             break;
         }
-
-        // No default case is needed for other stores like SHARED_SPACES or SETTINGS
-        // as they don't require special hydration. The deep-cloned object is sufficient.
     }
 
     return hydrated;
@@ -240,7 +210,6 @@ const get = async <T>(storeName: string, key: IDBValidKey): Promise<T | undefine
     const record = await performDbOperation<any>(storeName, 'readonly', store => store.get(key));
     if (record) {
         const hydrated = hydrateRecord(record, storeName);
-        // hydrateRecord can return null for corrupted data
         return hydrated !== null ? (hydrated as T) : undefined;
     }
     return undefined;
@@ -248,12 +217,9 @@ const get = async <T>(storeName: string, key: IDBValidKey): Promise<T | undefine
 
 const getAll = async <T>(storeName: string): Promise<T[]> => {
     const records = await performDbOperation<any[]>(storeName, 'readonly', store => store.getAll());
-
-    // Map over records, hydrate/validate them, and then filter out any null (corrupted) results.
     const validatedRecords = records
         .map(record => hydrateRecord(record, storeName))
-        .filter((record): record is T => record !== null); // Type guard ensures the final array is of type T[]
-    
+        .filter((record): record is T => record !== null); 
     return validatedRecords;
 };
 

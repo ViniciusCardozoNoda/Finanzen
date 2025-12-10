@@ -983,7 +983,6 @@ export const translations = {
     "broadcast_message_to_all": "Enviar Mensaje a Todos los Usuarios",
     "send_broadcast": "Enviar Mensaje",
     "message_sent": "¡Mensaje Enviado!",
-    "reports": "Informes",
     "feature_usage_statistics": "Estadísticas de Uso de Funciones",
     "most_used_features": "Funciones Más Utilizadas",
     "clicks": "Clics",

@@ -120,3 +120,12 @@ export interface FeatureUsageStats {
   name: string;
   clicks: number;
 }
+
+export interface Goal {
+  id: number;
+  userId: number;
+  category: string;
+  limit: number;
+  month: number; 
+  year: number;
+}

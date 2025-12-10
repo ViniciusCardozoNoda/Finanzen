@@ -1,14 +1,16 @@
+
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, Account, Bill, SharedSpace, FeedbackItem, BroadcastMessage } from '../types';
+import { Transaction, Account, Bill, SharedSpace, FeedbackItem, BroadcastMessage, Goal } from '../types';
 import { dbService } from '../services/dbService';
 import { useLocalization } from './LocalizationContext';
 import { useAuth } from './AuthContext';
 
 interface DataContextType {
   transactions: Transaction[];
-  allTransactions: Transaction[]; // For admin reports
+  allTransactions: Transaction[];
   accounts: Account[];
   bills: Bill[];
+  goals: Goal[];
   sharedSpaces: SharedSpace[];
   feedbackItems: FeedbackItem[];
   latestBroadcast: BroadcastMessage | null;
@@ -24,6 +26,8 @@ interface DataContextType {
   addFeedbackItem: (message: string) => Promise<void>;
   updateFeedbackStatus: (feedbackId: number, status: 'new' | 'resolved') => Promise<void>;
   addBroadcastMessage: (content: string) => Promise<void>;
+  addGoal: (goal: Omit<Goal, 'id'>) => Promise<void>;
+  deleteGoal: (goalId: number) => Promise<void>;
   upcomingAndOverdueBills: Bill[];
   billReminderCount: number;
 }
@@ -31,25 +35,24 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Global state for all data from DB
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [allBills, setAllBills] = useState<Bill[]>([]);
+  const [allGoals, setAllGoals] = useState<Goal[]>([]);
   const [sharedSpaces, setSharedSpaces] = useState<SharedSpace[]>([]);
   const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
   const [broadcastMessages, setBroadcastMessages] = useState<BroadcastMessage[]>([]);
 
-  // State filtered by current context (personal space, shared space, admin view)
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   
   const [currentSpaceId, setCurrentSpaceId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { t } = useLocalization();
   const { user } = useAuth();
 
-  // Fetch all initial data from IndexedDB
   useEffect(() => {
     const loadData = async () => {
       if (!user) {
@@ -59,13 +62,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       setIsLoading(true);
       try {
-        const [dbTransactions, dbAccounts, dbBills, dbSharedSpaces, dbFeedback, dbBroadcasts] = await Promise.all([
+        const [dbTransactions, dbAccounts, dbBills, dbSharedSpaces, dbFeedback, dbBroadcasts, dbGoals] = await Promise.all([
             dbService.getAll<Transaction>(dbService.STORES.TRANSACTIONS),
             dbService.getAll<Account>(dbService.STORES.ACCOUNTS),
             dbService.getAll<Bill>(dbService.STORES.BILLS),
             dbService.getAll<SharedSpace>(dbService.STORES.SHARED_SPACES),
             dbService.getAll<FeedbackItem>(dbService.STORES.FEEDBACK_ITEMS),
             dbService.getAll<BroadcastMessage>(dbService.STORES.BROADCAST_MESSAGES),
+            dbService.getAll<Goal>(dbService.STORES.GOALS),
         ]);
         
         setAllTransactions(dbTransactions);
@@ -73,6 +77,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setAllBills(dbBills);
         setFeedbackItems(dbFeedback.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
         setBroadcastMessages(dbBroadcasts);
+        setAllGoals(dbGoals);
         
         const userSpaces = dbSharedSpaces.filter(space => space.memberIds.includes(user.id));
         setSharedSpaces(userSpaces);
@@ -86,35 +91,34 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadData();
   }, [user]);
 
-  // Filter data based on the current context
   useEffect(() => {
     if (!user) return;
     
-    // Admin sees all financial data if they are not in a specific shared space
     if (user.role === 'admin' && currentSpaceId === null) {
       setAccounts(allAccounts);
       setTransactions(allTransactions);
       setBills(allBills);
+      setGoals(allGoals);
       return;
     }
 
     if (currentSpaceId === null) {
-      // Personal space view
       setAccounts(allAccounts.filter(acc => acc.userId === user.id && !acc.sharedSpaceId));
       setTransactions(allTransactions.filter(tx => tx.userId === user.id && !tx.sharedSpaceId));
       setBills(allBills.filter(bill => bill.userId === user.id && !bill.sharedSpaceId));
+      setGoals(allGoals.filter(goal => goal.userId === user.id));
     } else {
-      // Shared space view
       const space = sharedSpaces.find(s => s.id === currentSpaceId);
       if (space && space.memberIds.includes(user.id)) {
         setAccounts(allAccounts.filter(acc => acc.sharedSpaceId === currentSpaceId));
         setTransactions(allTransactions.filter(tx => tx.sharedSpaceId === currentSpaceId));
         setBills(allBills.filter(bill => bill.sharedSpaceId === currentSpaceId));
+        setGoals([]); // Goals are currently personal only
       } else {
-        setAccounts([]); setTransactions([]); setBills([]);
+        setAccounts([]); setTransactions([]); setBills([]); setGoals([]);
       }
     }
-  }, [currentSpaceId, allTransactions, allAccounts, allBills, user, sharedSpaces]);
+  }, [currentSpaceId, allTransactions, allAccounts, allBills, allGoals, user, sharedSpaces]);
   
   const upcomingAndOverdueBills = useMemo(() => {
     const today = new Date();
@@ -231,6 +235,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await dbService.add(dbService.STORES.BROADCAST_MESSAGES, newItem);
     setBroadcastMessages(prev => [newItem, ...prev]);
   }, []);
+
+  const addGoal = useCallback(async (goal: Omit<Goal, 'id'>) => {
+      if (!user) throw new Error("User not authenticated");
+      const newGoal: Goal = { ...goal, id: Date.now() };
+      await dbService.add(dbService.STORES.GOALS, newGoal);
+      setAllGoals(prev => [...prev, newGoal]);
+  }, [user]);
+
+  const deleteGoal = useCallback(async (goalId: number) => {
+      await dbService.delete(dbService.STORES.GOALS, goalId);
+      setAllGoals(prev => prev.filter(g => g.id !== goalId));
+  }, []);
   
   if (isLoading) {
       return <div>{t('loading_data')}</div>;
@@ -238,9 +254,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <DataContext.Provider value={{ 
-        transactions, allTransactions, accounts, bills, sharedSpaces, feedbackItems, latestBroadcast, currentSpaceId, setCurrentSpaceId,
+        transactions, allTransactions, accounts, bills, goals, sharedSpaces, feedbackItems, latestBroadcast, currentSpaceId, setCurrentSpaceId,
         addTransaction, addBill, updateBill, updateBillStatus, addAccount, deleteAccount, 
-        createSharedSpace, addFeedbackItem, updateFeedbackStatus, addBroadcastMessage,
+        createSharedSpace, addFeedbackItem, updateFeedbackStatus, addBroadcastMessage, addGoal, deleteGoal,
         upcomingAndOverdueBills, billReminderCount 
     }}>
       {children}
