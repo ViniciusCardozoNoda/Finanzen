@@ -18,7 +18,7 @@ const SummaryCard: React.FC<{ title: string; value: string; icon: string; color:
 const MyExpenses: React.FC = () => {
     const { user } = useAuth();
     const { t } = useLocalization();
-    const { transactions } = useData();
+    const { transactions, deleteTransaction } = useData();
 
     const userExpenses = useMemo(() => {
         // Data is already scoped by DataContext based on user role
@@ -34,6 +34,12 @@ const MyExpenses: React.FC = () => {
         return { total, count, average };
     }, [userExpenses]);
     
+    const handleDelete = async (id: number) => {
+        if (window.confirm(t('confirm_delete_title'))) {
+            await deleteTransaction(id);
+        }
+    };
+
     const categoryIcons: { [key: string]: string } = {
         'Educação': 'fa-graduation-cap',
         'Lazer': 'fa-film',
@@ -87,8 +93,9 @@ const MyExpenses: React.FC = () => {
                             <div className="flex items-center justify-between">
                                 <span className="font-bold text-red-500 text-lg sm:mr-6">R$ {tx.amount.toFixed(2)}</span>
                                 <div className="flex space-x-2">
+                                    {/* Edit placeholder */}
                                     <button className="text-slate-500 hover:text-blue-600 text-sm font-medium"><i className="fas fa-pencil-alt mr-1"></i> {t('edit')}</button>
-                                    <button className="text-slate-500 hover:text-red-600 text-sm font-medium"><i className="fas fa-trash-alt mr-1"></i> {t('delete')}</button>
+                                    <button onClick={() => handleDelete(tx.id)} className="text-slate-500 hover:text-red-600 text-sm font-medium"><i className="fas fa-trash-alt mr-1"></i> {t('delete')}</button>
                                 </div>
                             </div>
                         </li>

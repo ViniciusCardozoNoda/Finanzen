@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Transaction, Account, Bill, SharedSpace, FeedbackItem, BroadcastMessage, Goal } from '../types';
 import { dbService } from '../services/dbService';
@@ -17,6 +16,7 @@ interface DataContextType {
   currentSpaceId: number | null;
   setCurrentSpaceId: (spaceId: number | null) => void;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
+  deleteTransaction: (transactionId: number) => Promise<void>;
   addBill: (bill: Omit<Bill, 'id' | 'isPaid'>) => Promise<void>;
   updateBill: (bill: Bill) => Promise<void>;
   updateBillStatus: (billId: number, isPaid: boolean) => Promise<void>;
@@ -150,6 +150,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setAllTransactions(prev => [newTransaction, ...prev]);
   }, [user, currentSpaceId]);
 
+  const deleteTransaction = useCallback(async (transactionId: number) => {
+      await dbService.delete(dbService.STORES.TRANSACTIONS, transactionId);
+      setAllTransactions(prev => prev.filter(t => t.id !== transactionId));
+  }, []);
+
   const addBill = useCallback(async (bill: Omit<Bill, 'id' | 'isPaid'>) => {
     if (!user) throw new Error("User not authenticated");
     const newBill: Bill = { ...bill, id: Date.now(), isPaid: false, sharedSpaceId: currentSpaceId };
@@ -255,7 +260,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <DataContext.Provider value={{ 
         transactions, allTransactions, accounts, bills, goals, sharedSpaces, feedbackItems, latestBroadcast, currentSpaceId, setCurrentSpaceId,
-        addTransaction, addBill, updateBill, updateBillStatus, addAccount, deleteAccount, 
+        addTransaction, deleteTransaction, addBill, updateBill, updateBillStatus, addAccount, deleteAccount, 
         createSharedSpace, addFeedbackItem, updateFeedbackStatus, addBroadcastMessage, addGoal, deleteGoal,
         upcomingAndOverdueBills, billReminderCount 
     }}>

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useLocalization } from '../context/LocalizationContext';
 import { useData } from '../context/DataContext';
@@ -6,10 +5,7 @@ import { Transaction } from '../types';
 
 const Transactions: React.FC = () => {
   const { t } = useLocalization();
-  const { transactions, deleteAccount } = useData(); // Note: We need a deleteTransaction function in DataContext normally, assuming generic logic or adding it.
-  // Since deleteTransaction isn't in the interface provided in previous prompt, I will implement a visual filter first. 
-  // *Correction*: Looking at DataContext, it has `addTransaction` but missing `deleteTransaction`. 
-  // However, `MyExpenses` view has a delete button placeholder. I will simulate the list logic fully.
+  const { transactions, deleteTransaction } = useData();
   
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -43,6 +39,12 @@ const Transactions: React.FC = () => {
     const newDate = new Date(selectedDate);
     newDate.setFullYear(parseInt(e.target.value));
     setSelectedDate(newDate);
+  };
+
+  const handleDelete = async (id: number) => {
+      if (window.confirm(t('confirm_delete_title'))) { // Using simple confirm for now
+          await deleteTransaction(id);
+      }
   };
 
   const categoryIcons: { [key: string]: string } = {
@@ -152,8 +154,10 @@ const Transactions: React.FC = () => {
                                 <p className={`font-bold ${tx.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
                                     {tx.type === 'income' ? '+' : '-'} R$ {Number(tx.amount).toFixed(2)}
                                 </p>
-                                {/* Note: Delete functionality would require adding deleteTransaction to DataContext */}
-                                <button className="text-xs text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity mt-1">
+                                <button 
+                                    onClick={() => handleDelete(tx.id)}
+                                    className="text-xs text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity mt-1"
+                                >
                                     <i className="fas fa-trash"></i> {t('delete')}
                                 </button>
                             </div>

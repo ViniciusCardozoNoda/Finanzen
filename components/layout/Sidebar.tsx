@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocalization } from '../../context/LocalizationContext';
@@ -152,6 +151,11 @@ const FullSidebarContent: React.FC<{
                       </span>
                   </li>
               </ul>
+              {isCurrentlyExpanded && (
+                  <div className="text-center text-xs text-slate-300 mt-2">
+                      v1.2.0 (Verified)
+                  </div>
+              )}
             </div>
         </nav>
     );
