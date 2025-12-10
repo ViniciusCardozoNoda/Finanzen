@@ -1,7 +1,9 @@
+
 import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect } from 'react';
 import { User } from '../types';
 import { dbService } from '../services/dbService';
 import { useLocalization } from './LocalizationContext';
+import LoadingScreen from '../components/layout/LoadingScreen';
 
 // Helper to safely create a Date object from a string or another Date object
 const safeCreateDate = (dateValue: any): Date | undefined => {
@@ -242,7 +244,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [users]);
 
   if (isLoading) {
-      return <div>{t('loading_application')}</div>; 
+      return <LoadingScreen message={t('loading_application')} />;
   }
 
   return (

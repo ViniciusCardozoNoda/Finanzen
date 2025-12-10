@@ -1,8 +1,10 @@
+
 import React, { createContext, useState, useContext, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Transaction, Account, Bill, SharedSpace, FeedbackItem, BroadcastMessage, Goal } from '../types';
 import { dbService } from '../services/dbService';
 import { useLocalization } from './LocalizationContext';
 import { useAuth } from './AuthContext';
+import LoadingScreen from '../components/layout/LoadingScreen';
 
 interface DataContextType {
   transactions: Transaction[];
@@ -254,7 +256,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
   
   if (isLoading) {
-      return <div>{t('loading_data')}</div>;
+      return <LoadingScreen message={t('loading_data')} />;
   }
 
   return (
