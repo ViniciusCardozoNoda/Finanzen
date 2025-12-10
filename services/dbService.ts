@@ -146,15 +146,27 @@ const initDB = (): Promise<IDBDatabase> => {
   return dbPromise;
 };
 
-const performDbOperation = async <T>(storeName: string, mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> => {
+const performDbOperation = async <T>(storeName: string, mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T> | void): Promise<T> => {
   const db = await initDB();
   const transaction = db.transaction(storeName, mode);
   const store = transaction.objectStore(storeName);
+  
+  // Handling void operations (like bulk add loop)
   const request = operation(store);
 
   return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    // If there is a specific request returned, wait for it.
+    // If it's a void operation (manual loop), rely on transaction complete.
+    if (request) {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    }
+    
+    transaction.oncomplete = () => {
+        // If operation returned void, resolve when transaction completes
+        if (!request) resolve({} as T);
+    };
+    
     transaction.onerror = () => reject(transaction.error);
   });
 };
@@ -216,7 +228,10 @@ const get = async <T>(storeName: string, key: IDBValidKey): Promise<T | undefine
 };
 
 const getAll = async <T>(storeName: string): Promise<T[]> => {
-    const records = await performDbOperation<any[]>(storeName, 'readonly', store => store.getAll());
+    // Cast to any to satisfy the generic return type of performDbOperation wrapper
+    const records = await performDbOperation<any>(storeName, 'readonly', store => store.getAll());
+    if (!Array.isArray(records)) return [];
+    
     const validatedRecords = records
         .map(record => hydrateRecord(record, storeName))
         .filter((record): record is T => record !== null); 
@@ -226,6 +241,15 @@ const getAll = async <T>(storeName: string): Promise<T[]> => {
 const add = async <T>(storeName: string, value: T): Promise<IDBValidKey> => {
     const storableValue = prepareForDb(value);
     return performDbOperation(storeName, 'readwrite', store => store.add(storableValue));
+};
+
+// New function to handle bulk additions (e.g., installments)
+const bulkAdd = async <T>(storeName: string, values: T[]): Promise<void> => {
+    return performDbOperation(storeName, 'readwrite', store => {
+        values.forEach(value => {
+            store.add(prepareForDb(value));
+        });
+    });
 };
 
 const put = async <T>(storeName: string, value: T): Promise<IDBValidKey> => {
@@ -253,6 +277,7 @@ export const dbService = {
   get,
   getAll,
   add,
+  bulkAdd,
   put,
   delete: del,
   getSetting,

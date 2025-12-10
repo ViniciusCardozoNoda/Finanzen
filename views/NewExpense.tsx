@@ -17,6 +17,7 @@ interface ExpenseDraft {
     category: string;
     paymentMethod: string;
     expenseType: ExpenseType;
+    installmentsCount: string; // New field for input
     observations: string;
     accountId: number | '';
 }
@@ -35,6 +36,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({ setCurrentView }) => {
     category: '',
     paymentMethod: '',
     expenseType: 'unique',
+    installmentsCount: '',
     observations: '',
     accountId: accounts[0]?.id || '',
   });
@@ -86,6 +88,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({ setCurrentView }) => {
     if (!formData.accountId) newErrors.accountId = t('error_account_required');
     if (!formData.category) newErrors.category = t('error_category_required');
     if (!formData.paymentMethod) newErrors.paymentMethod = t('error_payment_method_required');
+    if (formData.expenseType === 'installment' && (!formData.installmentsCount || parseInt(formData.installmentsCount) < 2)) {
+        newErrors.installmentsCount = "Informe o número de parcelas (min 2).";
+    }
     return newErrors;
   }
 
@@ -99,6 +104,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({ setCurrentView }) => {
 
     if (!user) return;
 
+    // Prepare installment data object if applicable
+    const installments = formData.expenseType === 'installment' 
+        ? { current: 1, total: parseInt(formData.installmentsCount) }
+        : undefined;
+
     addTransaction({
       userId: user.id,
       accountId: formData.accountId as number,
@@ -109,6 +119,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({ setCurrentView }) => {
       category: formData.category,
       paymentMethod: formData.paymentMethod,
       expenseType: formData.expenseType,
+      installments: installments, // Backend logic will generate records based on this
     });
     
     clearForm();
@@ -213,6 +224,15 @@ const NewExpense: React.FC<NewExpenseProps> = ({ setCurrentView }) => {
                 </button>
             </div>
         </div>
+
+        {formData.expenseType === 'installment' && (
+            <div className="mb-6 animate-fade-in">
+                <label className="block text-sm font-medium text-slate-600 mb-1" htmlFor="installmentsCount">Número de Parcelas</label>
+                <input type="number" min="2" max="60" id="installmentsCount" name="installmentsCount" value={formData.installmentsCount} onChange={handleInputChange} placeholder="Ex: 10" className={`w-full bg-slate-50 border text-slate-900 p-3 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 ${errors.installmentsCount ? 'border-red-500' : 'border-slate-300'}`} />
+                {errors.installmentsCount && <p className="text-red-500 text-xs mt-1">{errors.installmentsCount}</p>}
+                <p className="text-xs text-slate-500 mt-1">O sistema irá gerar automaticamente uma despesa para cada mês futuro.</p>
+            </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             <div>

@@ -55,6 +55,111 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { t } = useLocalization();
   const { user } = useAuth();
 
+  // --- Backend Business Logic: Recurrence Engine ---
+  const runRecurrenceEngine = useCallback(async (currentTransactions: Transaction[], currentBills: Bill[]) => {
+      if (!user) return;
+      const today = new Date();
+      const currentMonth = today.getMonth();
+      const currentYear = today.getFullYear();
+      
+      const newTransactions: Transaction[] = [];
+      const newBills: Bill[] = [];
+
+      // 1. Process Fixed Expenses (Copy from previous months to current if missing)
+      // Find all 'fixed' transactions that are templates (recurrenceId is undefined or equal to own id)
+      // For simplicity in this logic: We look for any 'fixed' transaction in the DB. 
+      // If we don't have one for THIS month with the same description/category, we clone the latest one.
+      
+      const fixedTemplates = new Map<string, Transaction>();
+      
+      // Sort by date ascending so we get the latest settings last
+      const sortedTxs = [...currentTransactions].sort((a,b) => a.date.getTime() - b.date.getTime());
+      
+      sortedTxs.forEach(tx => {
+          if (tx.expenseType === 'fixed' && tx.userId === user.id) {
+              // Create a unique key for the "Expense Identity"
+              const key = `${tx.description}-${tx.category}-${tx.amount}`;
+              fixedTemplates.set(key, tx);
+          }
+      });
+
+      fixedTemplates.forEach(template => {
+          // Check if this template exists in the current month
+          const existsInCurrentMonth = currentTransactions.some(tx => 
+              tx.expenseType === 'fixed' &&
+              tx.description === template.description &&
+              tx.amount === template.amount &&
+              tx.date.getMonth() === currentMonth &&
+              tx.date.getFullYear() === currentYear
+          );
+
+          // Also check if the template is not from the future
+          const templateDate = new Date(template.date);
+          const isTemplatePastOrPresent = templateDate < today && (templateDate.getMonth() !== currentMonth || templateDate.getFullYear() !== currentYear);
+
+          if (!existsInCurrentMonth && isTemplatePastOrPresent) {
+              const newDate = new Date();
+              // Keep the same day of month, or clamp to last day
+              newDate.setDate(templateDate.getDate());
+              
+              const newTx: Transaction = {
+                  ...template,
+                  id: Date.now() + Math.random(), // Ensure unique ID
+                  date: newDate,
+                  // Keep expenseType fixed so it propagates to next month too
+              };
+              newTransactions.push(newTx);
+          }
+      });
+
+      // 2. Process Recurring Bills
+      const recurringBills = currentBills.filter(b => b.isRecurring && b.userId === user.id);
+      
+      recurringBills.forEach(bill => {
+          const billDueDate = new Date(bill.dueDate);
+          
+          // If bill is from a previous month/year
+          if (billDueDate.getMonth() !== currentMonth || billDueDate.getFullYear() !== currentYear) {
+             // Check if a clone exists for this month
+             const existsInCurrentMonth = currentBills.some(b => 
+                 b.name === bill.name && 
+                 b.amount === bill.amount &&
+                 b.dueDate.getMonth() === currentMonth &&
+                 b.dueDate.getFullYear() === currentYear
+             );
+
+             if (!existsInCurrentMonth) {
+                 const newDueDate = new Date();
+                 newDueDate.setDate(billDueDate.getDate()); // Same day, current month
+                 
+                 // Logic for Yearly recurrence could be added here
+                 if (bill.recurrence === 'monthly' || !bill.recurrence) {
+                     const newBill: Bill = {
+                         ...bill,
+                         id: Date.now() + Math.random(),
+                         dueDate: newDueDate,
+                         isPaid: false
+                     };
+                     newBills.push(newBill);
+                 }
+             }
+          }
+      });
+
+      if (newTransactions.length > 0) {
+          await dbService.bulkAdd(dbService.STORES.TRANSACTIONS, newTransactions);
+          console.log(`Recurrence Engine: Generated ${newTransactions.length} fixed transactions.`);
+      }
+      if (newBills.length > 0) {
+          await dbService.bulkAdd(dbService.STORES.BILLS, newBills);
+          console.log(`Recurrence Engine: Generated ${newBills.length} recurring bills.`);
+      }
+
+      return { newTransactions, newBills };
+
+  }, [user]);
+
+
   useEffect(() => {
     const loadData = async () => {
       if (!user) {
@@ -74,9 +179,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             dbService.getAll<Goal>(dbService.STORES.GOALS),
         ]);
         
-        setAllTransactions(dbTransactions);
+        // --- Run Business Logic Layer ---
+        // This simulates a backend job running on page load to generate recurring items
+        const { newTransactions, newBills } = await runRecurrenceEngine(dbTransactions, dbBills);
+        
+        const finalTransactions = [...dbTransactions, ...(newTransactions || [])];
+        const finalBills = [...dbBills, ...(newBills || [])];
+
+        setAllTransactions(finalTransactions);
         setAllAccounts(dbAccounts);
-        setAllBills(dbBills);
+        setAllBills(finalBills);
         setFeedbackItems(dbFeedback.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
         setBroadcastMessages(dbBroadcasts);
         setAllGoals(dbGoals);
@@ -91,7 +203,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
     loadData();
-  }, [user]);
+  }, [user, runRecurrenceEngine]);
 
   useEffect(() => {
     if (!user) return;
@@ -147,9 +259,44 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const addTransaction = useCallback(async (transaction: Omit<Transaction, 'id'>) => {
     if (!user) throw new Error("User not authenticated");
-    const newTransaction: Transaction = { ...transaction, id: Date.now(), sharedSpaceId: currentSpaceId };
-    await dbService.add(dbService.STORES.TRANSACTIONS, newTransaction);
-    setAllTransactions(prev => [newTransaction, ...prev]);
+    
+    // Logic for Installments: Generate N transactions
+    if (transaction.expenseType === 'installment' && transaction.installments) {
+        // Assume 'transaction.amount' is the installment value (monthly), not total.
+        // If it were total, we would divide: const amount = transaction.amount / transaction.installments.total;
+        
+        const { total } = transaction.installments;
+        const newTransactions: Transaction[] = [];
+        
+        for (let i = 0; i < total; i++) {
+            const date = new Date(transaction.date);
+            date.setMonth(date.getMonth() + i); // Add month index
+            
+            // Adjust description to include (X/Y)
+            const description = `${transaction.description} (${i + 1}/${total})`;
+            
+            newTransactions.push({
+                ...transaction,
+                id: Date.now() + i, // Ensure unique IDs
+                description,
+                date: date,
+                installments: {
+                    current: i + 1,
+                    total: total
+                },
+                sharedSpaceId: currentSpaceId
+            });
+        }
+        
+        await dbService.bulkAdd(dbService.STORES.TRANSACTIONS, newTransactions);
+        setAllTransactions(prev => [...newTransactions, ...prev]);
+
+    } else {
+        // Standard Single/Fixed Transaction
+        const newTransaction: Transaction = { ...transaction, id: Date.now(), sharedSpaceId: currentSpaceId };
+        await dbService.add(dbService.STORES.TRANSACTIONS, newTransaction);
+        setAllTransactions(prev => [newTransaction, ...prev]);
+    }
   }, [user, currentSpaceId]);
 
   const deleteTransaction = useCallback(async (transactionId: number) => {
