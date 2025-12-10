@@ -1,9 +1,22 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLocalization } from '../context/LocalizationContext';
 
+// REPLACE THESE WITH YOUR REAL IDS FROM GOOGLE CLOUD CONSOLE AND FACEBOOK DEVELOPERS
+// Se você não configurar isso, o login real não funcionará.
+const GOOGLE_CLIENT_ID = 'SEU_GOOGLE_CLIENT_ID_AQUI'; 
+const FACEBOOK_APP_ID = 'SEU_FACEBOOK_APP_ID_AQUI'; 
+
 type ViewMode = 'login' | 'register' | 'forgotPassword' | 'resetPassword';
+
+declare global {
+    interface Window {
+        google: any;
+        FB: any;
+        fbAsyncInit: any;
+    }
+}
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('user@finanzen.app');
@@ -14,8 +27,6 @@ const Login: React.FC = () => {
   const { t } = useLocalization();
   
   const [viewMode, setViewMode] = useState<ViewMode>('login');
-  const [isGoogleLoginOpen, setIsGoogleLoginOpen] = useState(false);
-  const [isFacebookLoginOpen, setIsFacebookLoginOpen] = useState(false);
 
   // Registration form state
   const [regForm, setRegForm] = useState({
@@ -31,6 +42,20 @@ const Login: React.FC = () => {
   const [resetPasswordForm, setResetPasswordForm] = useState({ newPassword: '', confirmNewPassword: '' });
   const [resetError, setResetError] = useState('');
 
+  // Initialize Facebook SDK
+  useEffect(() => {
+      if (FACEBOOK_APP_ID === 'SEU_FACEBOOK_APP_ID_AQUI') return;
+
+      window.fbAsyncInit = function() {
+        window.FB.init({
+          appId      : FACEBOOK_APP_ID,
+          cookie     : true,
+          xfbml      : true,
+          version    : 'v19.0'
+        });
+      };
+  }, []);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!login(email, password)) {
@@ -40,33 +65,86 @@ const Login: React.FC = () => {
     }
   };
 
-  const processGoogleLogin = async (email: string, name: string) => {
+  // --- Real Social Login Logic ---
+
+  const handleAuthPlatformLogin = async (email: string, name: string, avatar: string) => {
     const userExists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
     
     if (userExists) {
         login(email);
     } else {
+        // Automatically register user from social provider
         const registrationResult = await register(name, email, undefined, true);
         if (!registrationResult.success) {
             setLoginError(t(registrationResult.messageKey));
+        } else {
+            // Optional: Update avatar if registration didn't allow passing it directly
+            // For now, register creates a generic avatar, logic could be improved in AuthContext to accept avatar
         }
     }
-    setIsGoogleLoginOpen(false);
   };
 
-  const processFacebookLogin = async (email: string, name: string) => {
-    const userExists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (userExists) {
-        login(email);
-    } else {
-        const registrationResult = await register(name, email, undefined, true);
-        if (!registrationResult.success) {
-            setLoginError(t(registrationResult.messageKey));
-        }
-    }
-    setIsFacebookLoginOpen(false);
+  const handleGoogleClick = () => {
+      if (GOOGLE_CLIENT_ID === 'SEU_GOOGLE_CLIENT_ID_AQUI') {
+          alert("Configuração Necessária: Para usar o login com Google, você precisa obter um Client ID no Google Cloud Console e adicioná-lo ao arquivo Login.tsx na variável GOOGLE_CLIENT_ID.");
+          return;
+      }
+
+      if (typeof window.google === 'undefined') {
+          setLoginError("Erro ao carregar serviços do Google. Verifique sua conexão.");
+          return;
+      }
+
+      const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+          callback: async (tokenResponse: any) => {
+              if (tokenResponse && tokenResponse.access_token) {
+                  try {
+                      // Fetch user info using the access token
+                      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+                      });
+                      const userInfo = await userInfoResponse.json();
+                      await handleAuthPlatformLogin(userInfo.email, userInfo.name, userInfo.picture);
+                  } catch (error) {
+                      console.error("Error fetching Google user info:", error);
+                      setLoginError("Falha ao obter dados do Google.");
+                  }
+              }
+          },
+      });
+      client.requestAccessToken();
   };
+
+  const handleFacebookClick = () => {
+      if (FACEBOOK_APP_ID === 'SEU_FACEBOOK_APP_ID_AQUI') {
+          alert("Configuração Necessária: Para usar o login com Facebook, você precisa obter um App ID no Meta for Developers e adicioná-lo ao arquivo Login.tsx na variável FACEBOOK_APP_ID.");
+          return;
+      }
+
+      if (typeof window.FB === 'undefined') {
+          setLoginError("Erro ao carregar SDK do Facebook. Verifique se bloqueadores de anúncio não estão impedindo o carregamento.");
+          return;
+      }
+
+      window.FB.login((response: any) => {
+          if (response.authResponse) {
+              window.FB.api('/me', { fields: 'name, email, picture' }, (userInfo: any) => {
+                  if (userInfo.email) {
+                      const avatarUrl = userInfo.picture?.data?.url || '';
+                      handleAuthPlatformLogin(userInfo.email, userInfo.name, avatarUrl);
+                  } else {
+                      setLoginError("Não foi possível obter o e-mail do Facebook.");
+                  }
+              });
+          } else {
+              console.log('User cancelled login or did not fully authorize.');
+          }
+      }, { scope: 'public_profile,email' });
+  };
+
+  // --- End Real Social Login Logic ---
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,95 +199,6 @@ const Login: React.FC = () => {
     setRegForm(prev => ({ ...prev, [name]: value }));
   };
   
-  const mockGoogleUsers = [
-    { name: 'Maria Silva', email: 'maria.silva@gmail.com', avatar: `https://i.pravatar.cc/150?u=maria` },
-    { name: 'João Pereira', email: 'joao.pereira@outlook.com', avatar: `https://i.pravatar.cc/150?u=joao` }
-  ];
-
-  const mockFacebookUsers = [
-    { name: 'Ana Souza', email: 'ana.souza@facebook.user', avatar: `https://i.pravatar.cc/150?u=ana` },
-  ];
-
-  const GoogleLoginModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 animate-fade-in">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
-            <div className="p-6 text-center border-b border-slate-200">
-                <i className="fab fa-google text-2xl text-red-500 mb-2"></i>
-                <h3 className="text-xl font-semibold text-slate-800">{t('google_signin_title')}</h3>
-                <p className="text-sm text-slate-500 mt-1">{t('google_signin_to_continue')}</p>
-            </div>
-            <div className="p-4">
-                <p className="text-sm font-medium text-slate-600 px-2 pb-2">{t('google_signin_choose_account')}</p>
-                <ul className="space-y-1">
-                    {mockGoogleUsers.map(gUser => (
-                        <li key={gUser.email}>
-                            <button 
-                                onClick={() => processGoogleLogin(gUser.email, gUser.name)}
-                                className="w-full flex items-center text-left p-2 rounded-lg hover:bg-slate-100"
-                            >
-                                <img src={gUser.avatar} alt="avatar" className="w-10 h-10 rounded-full" />
-                                <div className="ml-3">
-                                    <p className="font-semibold text-sm text-slate-800">{gUser.name}</p>
-                                    <p className="text-xs text-slate-500">{gUser.email}</p>
-                                </div>
-                            </button>
-                        </li>
-                    ))}
-                    <li>
-                         <button className="w-full flex items-center text-left p-2 rounded-lg hover:bg-slate-100 text-slate-600">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-100">
-                                <i className="fas fa-user-plus"></i>
-                            </div>
-                            <div className="ml-3">
-                                <p className="font-semibold text-sm">{t('google_signin_another_account')}</p>
-                            </div>
-                        </button>
-                    </li>
-                </ul>
-            </div>
-             <div className="p-4 bg-slate-50 rounded-b-lg">
-                <button 
-                    onClick={() => setIsGoogleLoginOpen(false)} 
-                    className="w-full text-sm text-slate-600 hover:text-slate-800 font-medium py-2"
-                >
-                    {t('cancel')}
-                </button>
-            </div>
-        </div>
-    </div>
-  );
-
-  const FacebookLoginModal = () => {
-    const fbUser = mockFacebookUsers[0];
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 animate-fade-in">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 text-center">
-                <div className="p-6">
-                    <i className="fab fa-facebook-square text-5xl text-blue-600 mb-4"></i>
-                    <p className="text-lg font-semibold text-slate-800 mb-2">{t('facebook_signin_continue_as', { name: fbUser.name })}</p>
-                    <p className="text-sm text-slate-500 mb-6">{t('facebook_signin_permission_notice')}</p>
-                    <img src={fbUser.avatar} alt="avatar" className="w-16 h-16 rounded-full mx-auto mb-1" />
-                    <p className="font-semibold text-slate-700">{fbUser.name}</p>
-                    <p className="text-xs text-slate-500">{fbUser.email}</p>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-b-lg border-t border-slate-200">
-                    <button 
-                        onClick={() => processFacebookLogin(fbUser.email, fbUser.name)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg"
-                    >
-                        {t('facebook_signin_continue_as_button', { name: fbUser.name.split(' ')[0] })}
-                    </button>
-                    <button 
-                        onClick={() => setIsFacebookLoginOpen(false)} 
-                        className="w-full text-sm text-slate-600 hover:text-slate-800 font-medium py-2 mt-2"
-                    >
-                        {t('cancel')}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-  };
 
   if (viewMode === 'register') {
     return (
@@ -348,8 +337,6 @@ const Login: React.FC = () => {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-slate-50">
-      {isGoogleLoginOpen && <GoogleLoginModal />}
-      {isFacebookLoginOpen && <FacebookLoginModal />}
       <div className="w-full max-w-md p-8 space-y-6 bg-white border border-slate-200 rounded-2xl shadow-lg animate-fade-in">
         <div className="text-center">
             <div className="flex justify-center mb-4">
@@ -435,7 +422,7 @@ const Login: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
                 type="button"
-                onClick={() => setIsGoogleLoginOpen(true)}
+                onClick={handleGoogleClick}
                 className="inline-flex w-full items-center justify-center rounded-md border border-slate-300 bg-white py-2 px-4 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 transition-colors"
             >
                 <i className="fab fa-google text-lg mr-2 text-red-500"></i>
@@ -443,7 +430,7 @@ const Login: React.FC = () => {
             </button>
             <button
                 type="button"
-                onClick={() => setIsFacebookLoginOpen(true)}
+                onClick={handleFacebookClick}
                 className="inline-flex w-full items-center justify-center rounded-md border border-slate-300 bg-white py-2 px-4 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 transition-colors"
             >
                 <i className="fab fa-facebook text-lg mr-2 text-blue-600"></i>
