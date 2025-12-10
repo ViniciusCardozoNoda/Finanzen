@@ -1,9 +1,22 @@
 
-
 import { GoogleGenAI, FunctionDeclaration, Type, GenerateContentResponse } from "@google/genai";
 
 let ai: GoogleGenAI | null = null;
 let initializationAttempted = false;
+
+const getApiKey = (): string | undefined => {
+    // Check standard process.env (common in many build tools and Vercel system envs)
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        return process.env.API_KEY;
+    }
+    // Check Vite specific env variable
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_KEY) {
+        // @ts-ignore
+        return import.meta.env.VITE_API_KEY;
+    }
+    return undefined;
+};
 
 // This function lazily initializes the AI service in the most robust way possible.
 export const getAiInstance = (): GoogleGenAI | null => {
@@ -14,20 +27,12 @@ export const getAiInstance = (): GoogleGenAI | null => {
     
     initializationAttempted = true;
     
-    try {
-        // This block attempts to access `process.env.API_KEY`. In browser environments
-        // where `process` is not defined, this will throw a ReferenceError.
-        const apiKey = process.env.API_KEY;
-        
-        if (apiKey) {
-            ai = new GoogleGenAI({ apiKey });
-        } else {
-            console.warn("API_KEY is not configured. AI features are disabled.");
-            ai = null;
-        }
-    } catch (error) {
-        // The catch block will handle the ReferenceError gracefully, preventing an app crash.
-        console.warn("`process.env` is not available in this environment. AI features are disabled.");
+    const apiKey = getApiKey();
+    
+    if (apiKey) {
+        ai = new GoogleGenAI({ apiKey });
+    } else {
+        console.warn("API_KEY is not configured. AI features are disabled.");
         ai = null;
     }
     
@@ -58,7 +63,7 @@ export const getGeminiResponse = async (prompt: string): Promise<string> => {
             systemInstruction: systemInstruction,
         }
     });
-    return response.text;
+    return response.text || "";
   } catch (error) {
     console.error("Error getting response from Gemini:", error);
     return "Sorry, I'm having trouble connecting to the AI service right now.";

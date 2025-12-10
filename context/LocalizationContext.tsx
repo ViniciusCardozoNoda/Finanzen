@@ -17,7 +17,7 @@ export const LocalizationProvider: React.FC<{ children: ReactNode }> = ({ childr
   const [currentTranslations, setCurrentTranslations] = useState<Record<string, string>>(translations['pt']);
 
   useEffect(() => {
-      // Synchronously set translations based on selected language
+      // Synchronously set translations based on selected language from the imported object
       setCurrentTranslations(translations[language]);
   }, [language]);
 
